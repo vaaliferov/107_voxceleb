@@ -1,0 +1,7 @@
+numpy
+torch
+pandas
+torchaudio
+speechbrain
+scikit-learn
+python-telegram-bot
