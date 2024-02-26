@@ -1,7 +1,9 @@
-numpy
-torch
-pandas
-torchaudio
-speechbrain
-scikit-learn
-python-telegram-bot
+-f https://download.pytorch.org/whl/torch_stable.html
+
+gdown==5.1.0
+pandas==2.2.1
+numpy==1.26.4
+torch==2.2.1+cpu
+speechbrain==0.5.16
+torchaudio==2.2.1+cpu
+python-telegram-bot==20.8

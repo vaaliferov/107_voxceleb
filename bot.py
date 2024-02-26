@@ -1,41 +1,45 @@
-import torch
-import torchaudio
-import speechbrain
+from model import Model
+import os, argparse, asyncio
 
-import numpy as np
-import pandas as pd
-import sklearn.metrics
+from telegram import Update
+from telegram.ext import MessageHandler
+from telegram.ext import filters, Application
 
-import telegram.ext
-from secret import *
+parser = argparse.ArgumentParser()
+parser.add_argument('id', type=int, help='bot owner id')
+parser.add_argument('token', type=str, help='bot token')
 
-params = {'source': 'speechbrain/spkrec-ecapa-voxceleb', 'run_opts': {'device': 'cpu'}}
-ecapa = speechbrain.pretrained.EncoderClassifier.from_hparams(**params)
-vox_df, vox_embs = pd.read_csv('vox.csv'), np.load('ecapa_vox.npy')
-vox_df['start'] = vox_df['start'].round(0).astype(int).astype(str)
+args = parser.parse_args()
+model = Model('vox.csv', 'ecapa_vox.npy')
 
-def handle_voice(update, context):
-    
+async def handle_text(update, context):
+
+    usage = "Please, send me a voice message."
+    await update.message.reply_text(usage)
+
+async def handle_voice(update, context):
+
+    loop = asyncio.get_running_loop()
+
+    voice = update.message.voice
     user = update.message.from_user
-    file_id = update.message.voice['file_id']
-    context.bot.getFile(file_id).download('in.ogg')
-    audio, sr = torchaudio.load('in.ogg')
-    resample = torchaudio.transforms.Resample(sr, 16000)
-    audio = resample(audio[:, :4 * sr]).to('cpu')
-    in_emb = ecapa.encode_batch(audio)[0].detach().numpy()
-    vox_df['sim'] = sklearn.metrics.pairwise.cosine_similarity(in_emb, vox_embs)[0]
-    df = vox_df.sort_values(by='sim', ascending=False).groupby('id', sort=False).first()[:10]
-    result = '\n'.join(df['name'] + '\nhttps://youtu.be/' + df['video'] + '?t=' + df['start'])
-    context.bot.send_message(update.message.chat_id, result, disable_web_page_preview=True)
-    
-    if user['id'] != TG_BOT_OWNER_ID:
-        msg = f"@{user['username']} {user['id']}"
-        context.bot.send_message(TG_BOT_OWNER_ID, msg)
-        context.bot.send_voice(TG_BOT_OWNER_ID, file_id)
-        context.bot.send_message(TG_BOT_OWNER_ID, result, disable_web_page_preview=True)
+    chat_id = update.message.chat_id
 
-h = telegram.ext.MessageHandler
-f = telegram.ext.Filters.voice 
-u = telegram.ext.Updater(TG_BOT_TOKEN)
-u.dispatcher.add_handler(h(f, handle_voice))
-u.start_polling(); u.idle()
+    file = await context.bot.get_file(voice)
+    path = voice['file_unique_id'] + '.ogg'
+    await file.download_to_drive(path)
+
+    result = await loop.run_in_executor(None, model.predict, path)
+    await update.message.reply_text(result, disable_web_page_preview=True)
+
+    if user['id'] == args.id:
+        msg = f"@{user['username']} {user['id']}"
+        await context.bot.send_message(args.id, msg)
+        await context.bot.send_voice(args.id, voice['file_id'])
+
+    os.remove(path)
+
+app = Application.builder().token(args.token).build()
+app.add_handler(MessageHandler(filters.TEXT, handle_text))
+app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+app.run_polling(allowed_updates=Update.ALL_TYPES)
