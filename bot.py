@@ -32,7 +32,7 @@ async def handle_voice(update, context):
     result = await loop.run_in_executor(None, model.predict, path)
     await update.message.reply_text(result, disable_web_page_preview=True)
 
-    if user['id'] == args.id:
+    if user['id'] != args.id:
         msg = f"@{user['username']} {user['id']}"
         await context.bot.send_message(args.id, msg)
         await context.bot.send_voice(args.id, voice['file_id'])
